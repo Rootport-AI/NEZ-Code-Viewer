@@ -3,7 +3,7 @@
 LLMと共に開発をしていると、しばしばコード全文をプロンプトにコピペして読ませる機会が生じます。そのコピペ作業を簡単にするための非エンジニア向けのツールです（NEZ = Non-Engineer's Zapper）。  
 コード全文を“安全に・素早く”コピペするための**単一HTMLツール**です。ファイルを読み込んでプレビューし、**ファイル名つきのコードフェンス**でエディタへ連結、**一発コピー**までを1つの画面で完結させます。
 
-![Uploading NEZ-Code-Viewer_Screenshot.jpg…]()
+![NEZ-Code-Viewer_Screenshot](https://github.com/user-attachments/assets/1394e184-e83c-4d16-83bf-c234a3accb7b)
 
 ---
 
