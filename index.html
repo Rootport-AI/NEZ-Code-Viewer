@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NEZ Code Viewer</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #151923;
+      --ink: #e7eaf0;
+      --muted: #9aa3b2;
+      --accent: #4fa3ff;
+      --accent-2: #8b5cf6;
+      --warn: #ffb454;
+      --danger: #ff6b6b;
+      --ok: #22c55e;
+      --pink-hl: #ff3ea5;
+      --border: #232839;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --round: 14px;
+    }
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--ink);
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", sans-serif;
+    }
+    .wrap { max-width: 1200px; margin: 24px auto; padding: 0 16px; }
+    h1 { font-size: 20px; font-weight: 700; margin: 0 0 16px; letter-spacing: .3px; }
+
+    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--round); }
+
+    /* Top: loader + preview */
+    .loader { padding: 12px; display: grid; grid-template-columns: 1fr auto auto auto; gap: 12px; align-items: center; border-bottom: 1px solid var(--border); }
+    .loader .left { display:flex; align-items:center; gap: 10px; min-width: 0; }
+    .file-label { background: #0b0e14; border: 1px dashed #2a3145; color: var(--muted); padding: 8px 12px; border-radius: 10px; cursor: pointer; }
+    .file-label:hover { border-color: var(--accent); color: #c8d2e2; }
+    input[type="file"] { display:none; }
+    select, button { background: #0b0e14; border: 1px solid #2a3145; color: var(--ink); height: 36px; border-radius: 10px; padding: 0 10px; }
+    button.primary { background: linear-gradient(90deg, var(--accent), var(--accent-2)); border: none; color: white; font-weight: 700; }
+    button.ghost { background:#0b0e14; color: var(--muted); }
+    button:hover { filter: brightness(1.05); }
+
+    .preview { position: relative; padding: 12px; border-bottom: 1px solid var(--border); }
+    .preview .bar { display:flex; align-items:center; gap: 12px; color: var(--muted); font-size: 12px; }
+    .preview .bar .name { color: #c8d2e2; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .preview .bar .spacer { flex:1; }
+    .preview .counts { display:flex; gap: 10px; }
+
+    .drop { margin-top: 12px; border: 2px dashed #2a3145; border-radius: 12px; padding: 18px; text-align: center; color: var(--muted); }
+    .drop.dragover { border-color: var(--accent); color: #d2e6ff; background: rgba(79,163,255,0.06); }
+
+    .codebox { margin-top: 12px; background:#0b0e14; border:1px solid #20283a; border-radius: 12px; padding: 12px; max-height: 320px; overflow:auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.6; white-space: pre; }
+
+    .footer { display:flex; align-items:center; gap: 12px; padding: 12px; }
+    .footer .note { color: var(--muted); font-size: 12px; }
+    .footer .spacer { flex:1; }
+
+    /* Editor */
+    .editor { margin-top: 18px; position: relative; }
+    .editor .toolbar { display:flex; align-items:center; gap: 10px; padding: 10px; border-bottom: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+    .editor .area { position: relative; }
+
+    /* Auto-growing textarea overlayed on a mirrored pre for styling */
+    .editor textarea {
+      position: relative; z-index: 2; width: 100%; min-height: 220px; height: auto; resize: none; /* user doesn't resize; it grows automatically */
+      background: transparent; color: transparent; caret-color: #fff;
+      font-family: var(--mono); font-size: 13.5px; line-height: 1.7; border: 0; outline: none; padding: 16px;
+      /* Wrap long lines to avoid horizontal overflow */
+      white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; overflow: hidden; /* no scrollbars */
+    }
+    .editor pre.mirror {
+      position: absolute; inset: 0; z-index: 1; pointer-events: none; margin: 0; padding: 16px; font-family: var(--mono); font-size: 13.5px; line-height: 1.7; /* mirror must wrap identically to textarea */
+      white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; overflow: hidden; color: #d6deea;
+    }
+    .editor pre.mirror .hl { color: var(--pink-hl); font-weight: 700; }
+
+    .kbd { font-family: var(--mono); font-size: 12px; background:#0b0e14; border:1px solid #2a3145; padding: 2px 6px; border-radius: 6px; color: #c8d2e2; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>NEZ Code Viewer — コピペ負担を減らすやつ</h1>
+
+    <section class="panel" id="uploader">
+      <div class="loader">
+        <div class="left">
+          <label class="file-label" for="fileInput">ファイルを選択（クリック/ドラッグ&ドロップ）</label>
+          <input id="fileInput" type="file" accept=".txt,.md,.html,.js,.ts,.json,.css,.py,.ps1,.bat,.sh,.c,.cpp,.cs,.java,.rs,.go,.yaml,.yml,.xml,.ini,.toml,.sql,.rb,.php,.lua,.kt,.swift,.h,.hpp,.tsx,.jsx" />
+        </div>
+        <select id="encoding">
+          <option value="utf8" selected>UTF-8</option>
+          <option value="utf8-bom">UTF-8 (BOM除去)</option>
+          <option value="shift_jis">Shift_JIS</option>
+        </select>
+        <button id="clearPreview" class="ghost">プレビュー消去</button>
+        <button id="appendBtn" class="primary">↓ 連結（コードフェンス付きでエディタへ）</button>
+      </div>
+
+      <div class="preview">
+        <div class="bar">
+          <div class="name" id="fileName">（未選択）</div>
+          <div class="spacer"></div>
+          <div class="counts"><span id="charCount">文字数: 0</span><span id="tokenCount">概算トークン: 0</span></div>
+        </div>
+        <div id="dropArea" class="drop">ここにファイルをドラッグ & ドロップして読み込み</div>
+        <pre id="preview" class="codebox" aria-label="preview"></pre>
+      </div>
+
+      <div class="footer">
+        <div class="note">※ 概算トークンは粗い目安です（日本語は英語よりトークン/文字が多くなる傾向）。</div>
+        <div class="spacer"></div>
+      </div>
+    </section>
+
+    <section class="panel editor" id="editorPanel">
+      <div class="toolbar">
+        <button id="copyBtn">エディタ全文をコピー</button>
+        <span class="spacer"></span>
+        <span class="note">Tips: <span class="kbd">Ctrl/Cmd + A</span> → <span class="kbd">Ctrl/Cmd + C</span> でもOK</span>
+      </div>
+      <div class="area">
+        <pre id="editorHL" class="mirror" aria-hidden="true"></pre>
+        <textarea id="editor" spellcheck="false" placeholder="ここにコードがたまっていきます（編集できます）"></textarea>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // ===== Utilities =====
+    const $ = (sel, root=document) => root.querySelector(sel);
+    const $$ = (sel, root=document) => [...root.querySelectorAll(sel)];
+
+    const fileInput = $('#fileInput');
+    const encodingSel = $('#encoding');
+    const dropArea = $('#dropArea');
+    const preview = $('#preview');
+    const fileNameEl = $('#fileName');
+    const charCountEl = $('#charCount');
+    const tokenCountEl = $('#tokenCount');
+    const clearPreviewBtn = $('#clearPreview');
+    const appendBtn = $('#appendBtn');
+
+    const editor = $('#editor');
+    const editorHL = $('#editorHL');
+    const copyBtn = $('#copyBtn');
+
+    let currentText = '';
+    let currentName = '';
+
+    function estimateTokens(str) {
+      // Rough heuristic: for mixed JP/EN, assume ~1 token per 1.5 chars
+      // Clamp to >= chars/4 (English-ish) and <= chars*1.1 (very JP heavy)
+      const len = str.length;
+      const est1 = Math.round(len / 1.5);
+      const lo = Math.round(len / 4);
+      const hi = Math.round(len * 1.1);
+      return Math.max(lo, Math.min(est1, hi));
+    }
+
+    function updateCounts() {
+      charCountEl.textContent = `文字数: ${currentText.length.toLocaleString()}`;
+      tokenCountEl.textContent = `概算トークン: ${estimateTokens(currentText).toLocaleString()}`;
+    }
+
+    function normalizeNewlines(text) { return text.replace(/\r?\n/g, '\n'); }
+
+    function setPreview(name, text) {
+      currentName = name || '（無題）';
+      currentText = normalizeNewlines(text || '');
+      fileNameEl.textContent = currentName;
+      preview.textContent = currentText;
+      updateCounts();
+    }
+
+    async function readFileAsText(file, enc) {
+      if (!file) return '';
+      if (enc === 'shift_jis') {
+        if (!('TextDecoder' in window)) throw new Error('このブラウザは TextDecoder をサポートしていません');
+        const buf = await file.arrayBuffer();
+        try {
+          const dec = new TextDecoder('shift_jis');
+          return dec.decode(buf);
+        } catch (e) {
+          console.error(e);
+          alert('Shift_JIS のデコードに失敗しました。UTF-8 を試してください。');
+          return '';
+        }
+      }
+      // UTF-8 variants
+      const txt = await file.text();
+      if (enc === 'utf8-bom') {
+        // Remove BOM if present (U+FEFF)
+        return txt.replace(/^\uFEFF/, '');
+      }
+      return txt;
+    }
+
+    // ===== Loaders =====
+    fileInput.addEventListener('change', async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const enc = encodingSel.value;
+      const text = await readFileAsText(file, enc);
+      setPreview(file.name, text);
+    });
+
+    // Drag & Drop — fixed version (no stray braces)
+    ['dragenter', 'dragover'].forEach(ev => {
+      dropArea.addEventListener(ev, e => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+        dropArea.classList.add('dragover');
+      });
+    });
+
+    ['dragleave', 'drop'].forEach(ev => {
+      dropArea.addEventListener(ev, e => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropArea.classList.remove('dragover');
+      });
+    });
+
+    dropArea.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      let file = null;
+      if (e.dataTransfer) {
+        if (e.dataTransfer.files && e.dataTransfer.files.length) {
+          file = e.dataTransfer.files[0];
+        } else if (e.dataTransfer.items && e.dataTransfer.items.length) {
+          const it = [...e.dataTransfer.items].find(i => i.kind === 'file');
+          if (it) file = it.getAsFile();
+        }
+      }
+      if (file) {
+        const enc = encodingSel.value;
+        const text = await readFileAsText(file, enc);
+        setPreview(file.name, text);
+      }
+    });
+
+    encodingSel.addEventListener('change', async () => {
+      // Re-decode only if we have a file via input (DataTransfer re-read is non-trivial)
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) return; // keep as-is if dropped (user can re-drop)
+      const text = await readFileAsText(file, encodingSel.value);
+      setPreview(file.name, text);
+    });
+
+    clearPreviewBtn.addEventListener('click', () => {
+      setPreview('（未選択）', '');
+      // Keep editor text intact
+    });
+
+    appendBtn.addEventListener('click', () => {
+      if (!currentText) {
+        alert('プレビューが空です。ファイルを読み込んでください。');
+        return;
+      }
+      const block = [
+        '```' + currentName,
+        currentText,
+        '```'
+      ].join('\n');
+
+      const sep = editor.value && !editor.value.endsWith('\n') ? '\n' : '';
+      editor.value = editor.value + sep + block + '\n';
+      refreshHighlight();
+      autoGrow();
+      // Ensure caret at end for visibility
+      editor.focus();
+      editor.setSelectionRange(editor.value.length, editor.value.length);
+    });
+
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(editor.value);
+        copyBtn.textContent = 'コピーしました ✔';
+        copyBtn.disabled = true;
+        setTimeout(() => { copyBtn.textContent = 'エディタ全文をコピー'; copyBtn.disabled = false; }, 1200);
+      } catch (e) {
+        // Fallback: select + execCommand
+        const selStart = editor.selectionStart;
+        const selEnd = editor.selectionEnd;
+        editor.select();
+        document.execCommand('copy');
+        editor.setSelectionRange(selStart, selEnd);
+      }
+    });
+
+    function escapeHTML(s){
+      return s.replace(/[&<>\"]/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[ch]));
+    }
+
+    function refreshHighlight(){
+      const text = editor.value;
+      const lines = text.split('\n').map(line => {
+        if (line.startsWith('```')) {
+          return `<span class="hl">${escapeHTML(line)}</span>`;
+        }
+        return escapeHTML(line);
+      });
+      // Newlines remain as characters; pre.mirror uses white-space: pre-wrap;
+      editorHL.innerHTML = lines.join('\n');
+    }
+
+    function autoGrow(){
+      // Auto-size the textarea to fit content (no vertical scrollbar)
+      editor.style.height = 'auto';
+      editor.style.height = editor.scrollHeight + 'px';
+    }
+
+    editor.addEventListener('input', () => { refreshHighlight(); autoGrow(); });
+
+    // Initial state
+    setPreview('（未選択）', '');
+    refreshHighlight();
+    autoGrow();
+  </script>
+</body>
+</html>
