@@ -269,12 +269,39 @@
       ].join('\n');
 
       const sep = editor.value && !editor.value.endsWith('\n') ? '\n' : '';
-      editor.value = editor.value + sep + block + '\n';
+      const addition = sep + block + '\n';  // 追加分の文字列
+      const additionLength = addition.length;  // 追加分の文字数
+
+      // 現在のcaret位置を記録（選択範囲対応）
+      const start = editor.selectionStart;
+      const end = editor.selectionEnd;
+      const isCollapsed = start === end;  // 単一caretか選択中か
+
+      // valueを更新
+      editor.value = editor.value + addition;
+
+      // 位置を復元（追加分を考慮）
+      let newStart, newEnd;
+      if (isCollapsed) {
+        // 単一caret: 追加分より前なら位置維持、後（末尾）なら新末尾へ
+        if (start < editor.value.length - additionLength) {
+          newStart = newEnd = start;  // 維持
+        } else {
+          newStart = newEnd = editor.value.length;  // 末尾へ
+        }
+      } else {
+        // 選択中: 選択範囲を維持（追加は末尾なのでそのまま）
+        newStart = start;
+        newEnd = end;
+      }
+
+      // 復元 + フォーカス
+      editor.focus();
+      editor.setSelectionRange(newStart, newEnd);
+
+      // ハイライトと成長を更新（順序はvalue更新後）
       refreshHighlight();
       autoGrow();
-      // Ensure caret at end for visibility
-      editor.focus();
-      editor.setSelectionRange(editor.value.length, editor.value.length);
     });
 
     copyBtn.addEventListener('click', async () => {
